@@ -1,0 +1,13 @@
+{
+    "seed_websites": ["https://www.reddit.com/r/FreeGameFindings/", "https://gg.deals/giveaways/"],
+    "aggregator_urls": ["https://www.giveawaylisting.com/"],
+    "x_keywords": ["#SteamGiveaway", "#XboxCode", "#PSNGiveaway"],
+    "base_scan_interval": 300,
+    "x_api": {"api_key": "", "api_secret": "", "access_token": "", "access_secret": ""},
+    "proxies": ["http://proxy1:port", "http://proxy2:port"],
+    "notifications": {
+        "discord_webhook": "",
+        "telegram": {"bot_token": "", "chat_id": ""},
+        "email": {"smtp_server": "smtp.gmail.com", "port": 587, "sender": "", "password": "", "recipient": ""}
+    }
+}

@@ -1,0 +1,47 @@
+import requests
+from bs4 import BeautifulSoup
+import re
+import time
+
+# Keycode patterns
+STEAM_PATTERN = r"[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}"
+XBOX_PATTERN = r"[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}"
+PSN_PATTERN = r"[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}"
+
+# Hardcoded websites to scan
+WEBSITES = [
+    "https://www.reddit.com/r/FreeGameFindings/",
+    "https://gg.deals/giveaways/"
+]
+
+def scan_webpage(url):
+    try:
+        response = requests.get(url)
+        text = BeautifulSoup(response.text, "html.parser").get_text()
+        return find_keycodes(text)
+    except:
+        return {}
+
+def find_keycodes(text):
+    steam = re.findall(STEAM_PATTERN, text)
+    xbox = re.findall(XBOX_PATTERN, text)
+    psn = re.findall(PSN_PATTERN, text)
+    return {"Steam": steam, "Xbox": xbox, "PlayStation": psn}
+
+def print_keys(keys, source):
+    print(f"\nChecking {source}:")
+    for platform, codes in keys.items():
+        if codes:
+            print(f"{platform}:")
+            for code in codes:
+                print(f"  - {code}")
+        else:
+            print(f"{platform}: None found")
+
+while True:
+    for url in WEBSITES:
+        keys = scan_webpage(url)
+        print_keys(keys, url)
+    
+    print("\nWaiting 5 minutes...")
+    time.sleep(300)  # 5 minutes

@@ -1,0 +1,86 @@
+Done in 2010??
+
+Not gonna get sued for this.
+
+import java.awt.Robot;
+import java.awt.Color;
+import java.awt.Rectangle;
+import java.awt.event.InputEvent;
+import java.util.Random;
+
+public class SimpleRuneScapeBot {
+    private static Robot robot;
+    private static Random random = new Random();
+
+    // Hypothetical fishing spot color (e.g., water blue-ish in old RS graphics)
+    private static final Color FISHING_SPOT_COLOR = new Color(0, 102, 204); // RGB for blue water
+    private static final int COLOR_TOLERANCE = 20; // Allow slight variation
+    private static final Rectangle SCAN_AREA = new Rectangle(100, 100, 400, 300); // Game window area
+
+    public static void main(String[] args) {
+        try {
+            robot = new Robot();
+            System.out.println("RuneScape Bot Starting... Press Ctrl+C to stop.");
+            runBot();
+        } catch (Exception e) {
+            System.err.println("Error initializing bot: " + e.getMessage());
+        }
+    }
+
+    private static void runBot() {
+        while (true) {
+            // Scan for fishing spot
+            int[] spot = findFishingSpot();
+            if (spot != null) {
+                System.out.println("Found fishing spot at (" + spot[0] + ", " + spot[1] + ")");
+                clickSpot(spot[0], spot[1]);
+            } else {
+                System.out.println("No fishing spot found. Waiting...");
+            }
+
+            // Random wait to mimic human behavior
+            sleep(random.nextInt(3000) + 2000); // 2-5 seconds
+        }
+    }
+
+    private static int[] findFishingSpot() {
+        // Scan a small rectangle of the screen for the target color
+        for (int x = SCAN_AREA.x; x < SCAN_AREA.x + SCAN_AREA.width; x += 5) {
+            for (int y = SCAN_AREA.y; y < SCAN_AREA.y + SCAN_AREA.height; y += 5) {
+                Color pixelColor = robot.getPixelColor(x, y);
+                if (isColorMatch(pixelColor, FISHING_SPOT_COLOR)) {
+                    return new int[]{x, y};
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isColorMatch(Color c1, Color c2) {
+        // Check if colors are close enough within tolerance
+        return Math.abs(c1.getRed() - c2.getRed()) <= COLOR_TOLERANCE &&
+               Math.abs(c1.getGreen() - c2.getGreen()) <= COLOR_TOLERANCE &&
+               Math.abs(c1.getBlue() - c2.getBlue()) <= COLOR_TOLERANCE;
+    }
+
+    private static void clickSpot(int x, int y) {
+        // Move mouse and click
+        robot.mouseMove(x, y);
+        sleep(100); // Small delay for realism
+        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+        sleep(50);
+        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+        System.out.println("Clicked fishing spot!");
+        
+        // Wait for "fishing animation" (simulated)
+        sleep(random.nextInt(5000) + 3000); // 3-8 seconds
+    }
+
+    private static void sleep(int ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}
