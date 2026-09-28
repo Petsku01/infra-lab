@@ -1,0 +1,29 @@
+services:
+  super-ubuntu:
+    build:
+      context: .
+    image: super-ubuntu:latest
+    container_name: super-ubuntu-dev
+    hostname: super-ubuntu
+    ports:
+      - "${SSH_PORT:-2222}:22"
+      - "${CODE_SERVER_PORT:-8080}:8080"
+    volumes:
+      - ./data:/home/user/data
+      - ./ssh_keys:/home/user/.ssh:ro
+    environment:
+      - ENABLE_SSH=${ENABLE_SSH:-true}
+      - ENABLE_CODE_SERVER=${ENABLE_CODE_SERVER:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    mem_limit: 1g
+    cpus: 1
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep sshd || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

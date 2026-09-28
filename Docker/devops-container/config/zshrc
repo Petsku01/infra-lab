@@ -1,0 +1,27 @@
+# Path to oh-my-zsh installation
+export ZSH="$HOME/.oh-my-zsh"
+
+# Theme
+ZSH_THEME="robbyrussell"
+
+# Plugins (added docker-compose for relevance)
+plugins=(git docker docker-compose python node npm aws)
+
+# Source oh-my-zsh
+source $ZSH/oh-my-zsh.sh
+
+# Aliases
+alias ll='ls -la'
+alias la='ls -A'
+alias l='ls -CF'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias dc='docker compose'  # Shortcut for compose
+alias ps='docker ps'       # Quick container list
+
+# Environment
+export PATH=$HOME/.local/bin:$PATH
+export EDITOR=vim
+
+# Welcome message (minimal)
+echo "Ready! Your data directory is at: /home/user/data"

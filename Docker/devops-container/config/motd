@@ -1,0 +1,14 @@
+========================================
+Welcome to Super Ubuntu Docker Container
+========================================
+Version: 1.1 (Ubuntu 24.04 LTS base)
+Features:
+• Zsh with oh-my-zsh
+• Tools: git, python3, nodejs (v20), awscli (v2), jq, vim, htop
+• Code-server (VS Code v4.107.1) on port 8080 (set ENABLE_CODE_SERVER=true)
+• SSH on port 22 (set ENABLE_SSH=true; key auth recommended)
+• Persistent data: /home/user/data
+• Runs as non-root user 'user' for security
+Run 'help' for usage instructions.
+Note: Use sudo for privileged commands (password required).
+Ready! Your data directory is at: /home/user/data

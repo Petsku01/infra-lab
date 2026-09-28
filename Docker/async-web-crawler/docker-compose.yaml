@@ -1,0 +1,15 @@
+services:
+  crawler:
+    build: .
+    image: web-crawler:latest
+    volumes:
+      - ./output:/app/output
+    environment:
+      - START_URLS=${START_URLS:-https://example.com}
+      - PROXY_URL=${PROXY_URL:-}
+      - RATE_LIMIT_SEC=${RATE_LIMIT_SEC:-5}
+      - OUTPUT_FILE=${OUTPUT_FILE:-/app/output/crawled_urls.csv}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: on-failure:5
+    mem_limit: 512m
+    cpus: 0.5

@@ -1,0 +1,349 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Security scanning first
+  security-scan:
+    name: Security & Dependency Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+      
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+        if: always()
+      
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'Docker'
+          path: '.'
+          format: 'JSON'
+        continue-on-error: false
+
+  # Java Calculator tests and build
+  calculator-test:
+    name: Calculator - Test & Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Run unit tests
+        run: |
+          cd Calculator_java_docker
+          mvn clean test --no-transfer-progress --fail-at-end
+        continue-on-error: false
+      
+      - name: Verify test coverage
+        run: |
+          cd Calculator_java_docker
+          mvn jacoco:report jacoco:check --no-transfer-progress
+        continue-on-error: false
+      
+      - name: Build with Maven
+        run: |
+          cd Calculator_java_docker
+          mvn clean package -DskipTests --no-transfer-progress
+        continue-on-error: false
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: complex-calculator-test-results
+          path: 'complex-calculator/target/surefire-reports/'
+      
+      - name: SonarQube scan (optional)
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "Skipping SonarQube scan - no SONAR_TOKEN provided"
+            exit 0
+          fi
+          cd complex-calculator
+          mvn sonar:sonar -Dsonar.projectKey=docker-complex-calculator -Dsonar.host.url=$SONAR_HOST_URL
+        continue-on-error: true
+
+  # Python projects lint & test
+  python-lint:
+    name: Python Projects - Lint & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install linting tools
+        run: |
+          pip install black isort flake8 pylint bandit safety
+      
+      - name: Format check (black)
+        run: |
+          black --check async-web-crawler/ integration-tests/ || exit 1
+        continue-on-error: false
+      
+      - name: Import sort check
+        run: |
+          isort --check-only async-web-crawler/ integration-tests/ || exit 1
+        continue-on-error: false
+      
+      - name: Lint with flake8
+        run: |
+          flake8 async-web-crawler/*.py integration-tests/process.py --max-line-length=120 --ignore=E501,W503 --max-complexity=10 || exit 1
+        continue-on-error: false
+      
+      - name: Lint with pylint
+        run: |
+          cd async-web-crawler
+          pylint main.py fetcher.py parser.py crawler.py storage.py validators.py observability.py --fail-under=8.0 || exit 1
+          cd ../integration-tests
+          pylint process.py --fail-under=8.0 || exit 1
+        continue-on-error: false
+      
+      - name: Security scan with bandit
+        run: |
+          bandit -r async-web-crawler/ integration-tests/ -f json -o bandit-report.json --severity-level medium || exit 1
+        continue-on-error: false
+      
+      - name: Dependency vulnerability scan
+        run: |
+          cd async-web-crawler
+          safety check --json || exit 1
+        continue-on-error: false
+      
+      - name: Run Python tests
+        run: |
+          cd async-web-crawler
+          pip install -r requirements.txt pytest pytest-asyncio pytest-cov
+          pytest test_parser.py test_crawler.py test_business_logic.py -v --cov=. --cov-report=term --cov-report=xml --cov-fail-under=70 || exit 1
+        continue-on-error: false
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./async-web-crawler/coverage.xml
+          fail_ci_if_error: true
+        if: always()
+
+  # Build Docker images
+  build-images:
+    name: Build Docker Images
+    needs: [security-scan, calculator-test, python-lint]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - dockerfile: complex-calculator/Dockerfile
+            image: complex-calculator
+            context: complex-calculator
+          - dockerfile: async-web-crawler/Dockerfile
+            image: async-web-crawler
+            context: async-web-crawler
+          - dockerfile: integration-tests/Dockerfile
+            image: integration-tests
+            context: integration-tests
+          - dockerfile: devops-container/Dockerfile
+            image: devops-container
+            context: devops-container
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          format: 'sarif'
+          output: 'trivy-image-${{ matrix.image }}.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: false
+        continue-on-error: false
+      
+      - name: Upload image scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-image-${{ matrix.image }}.sarif'
+        if: always()
+
+  # Code quality checks
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --fail
+        continue-on-error: false
+      
+      - name: Check file permissions
+        run: |
+          echo "Checking for world-writable files..."
+          count=$(find . -type f -perm /002 -not -path './.git/*' | wc -l)
+          if [ "$count" -gt 0 ]; then
+            echo "ERROR: Found $count world-writable files"
+            exit 1
+          fi
+        continue-on-error: false
+      
+      - name: Check for sensitive files
+        run: |
+          echo "Checking for .env files (should use .env.example)..."
+          if [ -f .env ]; then
+            echo "ERROR: .env file found in repo (security risk)"
+            exit 1
+          fi
+          echo "Checking for private keys..."
+          if find . -name "*.pem" -o -name "*.key" -o -name "*_rsa" | grep -v '.git' | grep -q .; then
+            echo "ERROR: Private key files found in repo"
+            exit 1
+          fi
+        continue-on-error: false
+
+  # Integration tests
+  integration-test:
+    name: Integration Tests
+    needs: [calculator-test, python-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Compose
+        run: docker-compose version
+      
+      - name: Test docker-compose is valid
+        run: |
+          cd docker
+          docker-compose config
+          echo "✓ docker-compose.yml is valid"
+      
+      - name: Test Calculator Docker build
+        run: |
+          cd Calculator_java_docker
+          docker build -t calculator:test .
+          echo "✓ Calculator image built successfully"
+
+  # Enforce all checks passed
+  enforce-quality:
+    name: Enforce Quality Gates
+    runs-on: ubuntu-latest
+    needs: [security-scan, calculator-test, python-lint, build-images, code-quality, integration-test]
+    if: always()
+    steps:
+      - name: Enforce all checks passed
+        run: |
+          if [ "${{ needs.security-scan.result }}" != "success" ]; then
+            echo "❌ Security scan failed"
+            exit 1
+          fi
+          if [ "${{ needs.calculator-test.result }}" != "success" ]; then
+            echo "❌ Calculator tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.python-lint.result }}" != "success" ]; then
+            echo "❌ Python lint failed"
+            exit 1
+          fi
+          if [ "${{ needs.code-quality.result }}" != "success" ]; then
+            echo "❌ Code quality checks failed"
+            exit 1
+          fi
+          if [ "${{ needs.build-images.result }}" != "success" ]; then
+            echo "❌ Image builds failed"
+            exit 1
+          fi
+          if [ "${{ needs.integration-test.result }}" != "success" ]; then
+            echo "❌ Integration tests failed"
+            exit 1
+          fi
+          echo "✅ All quality gates passed"
+      
+      - name: Block merge on failure
+        if: failure()
+        run: |
+          echo "::error::Pipeline failed - merge blocked"
+          exit 1
